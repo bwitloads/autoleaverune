@@ -9,26 +9,76 @@ local DeathDelay = 10 -- delay
 -- Function to handle rejoin
 local function rejoinGame()
     print("Detected disconnection or error. Rejoining the game...")
-    -- Rejoin the game using the same place
-    pcall(function()
+    local success, errorMessage = pcall(function()
         TeleportService:Teleport(game.PlaceId, LocalPlayer) -- Teleports back to the same game
     end)
-end
-
--- Function to detect if the player is disconnected (error screen pop-up or lost connection)
-local function checkForDisconnection()
-    -- If the player's character is nil or their HumanoidRootPart is missing, it's likely disconnected
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        rejoinGame()  -- Rejoin the game if disconnected
+    if not success then
+        print("❌ Rejoin failed:", errorMessage)
     end
 end
 
--- Function to detect teleportation failure
-local function handleTeleportFailure()
-    -- Retry teleportation in case of failure (for example, "Failed to Connect" or server issues)
-    pcall(function()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end)
+-- Function to detect if the player is disconnected
+local function checkForDisconnection()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        rejoinGame()
+    end
+end
+
+-- Function to fetch a list of available servers
+local function getServerList()
+    local servers = {}
+    local nextCursor = nil
+    local retryLimit = 3
+    local retries = 0
+
+    repeat
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100" .. (nextCursor and "&cursor=" .. nextCursor or ""), true))
+        end)
+
+        if success and result and result.data then
+            for _, server in pairs(result.data) do
+                if server.id ~= game.JobId and server.playing >= 3 and server.playing <= 8 then
+                    table.insert(servers, server)
+                end
+            end
+            if #servers > 0 then
+                return servers
+            else
+                print("❌ No suitable servers found in this batch.")
+            end
+        else
+            retries = retries + 1
+            print("❌ Failed to fetch server list. Retrying... (" .. retries .. "/" .. retryLimit .. ")")
+            wait(10)
+        end
+    until retries >= retryLimit
+
+    return servers
+end
+
+-- Function to hop to a new server
+local function hopServer()
+    print("🔍 Searching for a new server (3-8 players)...")
+
+    local suitableServers = getServerList()
+
+    if #suitableServers > 0 then
+        local serverToJoin = suitableServers[math.random(1, #suitableServers)]
+        print("🌍 Hopping to server: " .. serverToJoin.id)
+        local success, errorMessage = pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverToJoin.id, LocalPlayer)
+        end)
+        if not success then
+            print("❌ Teleport failed: " .. errorMessage)
+            wait(RetryInterval)
+            hopServer() -- Retry
+        end
+    else
+        print("❌ No suitable servers found. Retrying in 10 seconds...")
+        wait(10)
+        hopServer()
+    end
 end
 
 -- Function to count players in proximity (excluding self)
@@ -45,48 +95,10 @@ local function getPlayersInRadius(radius)
     return count
 end
 
--- Function to find and join a new server (3-8 players only)
-local function hopServer()
-    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")).data
-    local suitableServers = {}
-
-    -- Find servers with 3-8 players
-    for _, server in pairs(servers) do
-        if server.playing >= 3 and server.playing <= 8 and server.id ~= game.JobId then
-            table.insert(suitableServers, server)
-        end
-    end
-
-    -- If we find suitable servers, join one of them
-    if #suitableServers > 0 then
-        local serverToJoin = suitableServers[math.random(1, #suitableServers)]
-        print("Hopping to new server: " .. serverToJoin.id)
-        local success, errorMessage = pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverToJoin.id, LocalPlayer)
-        end)
-        if not success then
-            print("Teleport failed: " .. errorMessage)
-            handleTeleportFailure() -- Retry teleport if it fails
-        end
-    else
-        -- Panic join if no suitable servers (3-8 players) are found
-        print("No suitable servers found. Panic joining any available server...")
-        local randomServer = servers[math.random(1, #servers)] -- Select a random server from the list
-        print("Joining random server: " .. randomServer.id)
-        local success, errorMessage = pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer.id, LocalPlayer)
-        end)
-        if not success then
-            print("Teleport failed: " .. errorMessage)
-            handleTeleportFailure() -- Retry teleport if it fails
-        end
-    end
-end
-
 -- Function to handle respawn event
 local function onCharacterAdded(character)
     print("Character respawned. Waiting for " .. DeathDelay .. " seconds before starting the script.")
-    wait(DeathDelay) -- Wait for 5 seconds after respawn
+    wait(DeathDelay)
 end
 
 -- Listen for character respawn
@@ -96,17 +108,17 @@ LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
 while true do
     wait(CheckInterval)
 
-    -- Check if the player is disconnected and rejoin
+    -- Check if the player is disconnected
     checkForDisconnection()
 
-    -- Check player proximity if not in the delay period
+    -- Check player proximity
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
         local playerCount = getPlayersInRadius(100)
         print("Players in radius:", playerCount)
 
-        -- Only hop if there are players nearby (playerCount > 0)
+        -- Only hop if there are players nearby
         if playerCount > 0 then
-            print("Players found in proximity. Searching for a new server (3-8 players)...")
+            print("Players found nearby. Searching for a new server...")
             hopServer()
         end
     end
