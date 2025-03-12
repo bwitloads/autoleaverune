@@ -4,7 +4,7 @@ local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 local CheckInterval = 1 -- How often to check (in seconds)
 local RetryInterval = 10 -- How often to retry rejoining after a failure
-local DeathDelay = 5 -- delay
+local DeathDelay = 10 -- delay
 
 -- Function to handle rejoin
 local function rejoinGame()
