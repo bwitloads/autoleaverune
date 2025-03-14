@@ -1,3 +1,4 @@
+print("this is working")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
