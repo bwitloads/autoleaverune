@@ -113,7 +113,7 @@ while true do
 
     -- Check player proximity
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local playerCount = getPlayersInRadius(100)
+        local playerCount = getPlayersInRadius(200)
         print("Players in radius:", playerCount)
 
         -- Only hop if there are players nearby
